@@ -1,91 +1,69 @@
 import streamlit as st
-import nbformat
 import tensorflow as tf
-import pandas as pd
 import numpy as np
+import pandas as pd
+from tensorflow.keras.preprocessing import image
 from PIL import Image
-import io
-import matplotlib.pyplot as plt
+import requests
+import re
+import os
 
-# Streamlit app title
-st.title("Dog Breed Classification App")
+st.title("🐶 Dog Breed Classification")
 
-# File uploader for .ipynb file
-notebook_file = st.file_uploader("Upload Jupyter Notebook (.ipynb)", type=["ipynb"])
+# ----------------------------
+# 1. Download Model from Google Drive
+# ----------------------------
+@st.cache_resource
+def load_model():
+    model_path = "dog_vision_model.h5"
+    if not os.path.exists(model_path):
+        drive_link = "https://drive.google.com/file/d/1wlLZWg3Dv1tBNjCWncOZ1Up7ymEaribv/view?usp=drive_link"
+        match = re.search(r"/d/([a-zA-Z0-9_-]+)", drive_link)
+        if match:
+            file_id = match.group(1)
+            download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+            st.write("📥 Downloading model from Google Drive...")
+            r = requests.get(download_url)
+            with open(model_path, "wb") as f:
+                f.write(r.content)
+        else:
+            st.error("❌ Invalid Google Drive link for model.")
+            st.stop()
 
-if notebook_file is not None:
-    st.subheader("Notebook Content")
-    try:
-        # Read and parse the notebook
-        notebook_content = notebook_file.getvalue().decode("utf-8")
-        notebook = nbformat.reads(notebook_content, as_version=4)
-        
-        # Display markdown and code cells
-        for cell in notebook.cells:
-            if cell.cell_type == "markdown":
-                st.markdown(cell.source)
-            elif cell.cell_type == "code":
-                st.code(cell.source, language="python")
-                if cell.outputs:
-                    for output in cell.outputs:
-                        if output.output_type == "stream":
-                            st.text(output.text)
-                        elif output.output_type == "display_data" or output.output_type == "execute_result":
-                            if "text/plain" in output.data:
-                                st.text(output.data["text/plain"])
-                            elif "text/html" in output.data:
-                                st.write(output.data["text/html"])
-                            elif "image/png" in output.data:
-                                st.image(io.BytesIO(base64.b64decode(output.data["image/png"])))
-    except Exception as e:
-        st.error(f"Error reading notebook: {e}")
+    return tf.keras.models.load_model(model_path)
 
-# File uploader for .h5 model file
-model_file = st.file_uploader("Upload Model (.h5)", type=["h5"])
+model = load_model()
 
-if model_file is not None:
-    st.subheader("Model Information")
-    try:
-        # Save model temporarily
-        with open("temp_model.h5", "wb") as f:
-            f.write(model_file.getvalue())
-        
-        # Load the model
-        model = tf.keras.models.load_model("temp_model.h5")
-        
-        # Display model summary
-        st.write("Model Summary:")
-        summary = []
-        model.summary(print_fn=lambda x: summary.append(x))
-        st.text("\n".join(summary))
-    except Exception as e:
-        st.error(f"Error loading model: {e}")
+# ----------------------------
+# 2. Load Class Labels
+# ----------------------------
+@st.cache_data
+def load_labels():
+    df = pd.read_csv("labels.csv")
+    if "breed" in df.columns:
+        return sorted(df["breed"].unique().tolist())
+    else:
+        st.error("❌ 'labels.csv' must contain a 'breed' column.")
+        st.stop()
 
-# File uploader for custom image
-image_file = st.file_uploader("Upload an Image for Prediction", type=["jpg", "jpeg", "png"])
+class_names = load_labels()
 
-if image_file is not None and model_file is not None:
-    st.subheader("Dog Breed Prediction")
-    try:
-        # Load and preprocess image
-        img = Image.open(image_file)
-        img = img.resize((224, 224))  # Assuming model expects 224x224 input
-        img_array = np.array(img) / 255.0  # Normalize
-        img_array = np.expand_dims(img_array, axis=0)  # Add batch dimension
+# ----------------------------
+# 3. Image Upload & Prediction
+# ----------------------------
+uploaded_file = st.file_uploader("Upload a dog image", type=["jpg", "jpeg", "png"])
 
-        # Load labels from the notebook's labels.csv (assuming it's available)
-        labels_csv = pd.read_csv("labels.csv")  # Update path if hosted elsewhere
-        unique_breeds = np.unique(labels_csv["breed"])
-        
-        # Make prediction
-        pred_probs = model.predict(img_array)
-        pred_label = unique_breeds[np.argmax(pred_probs[0])]
-        
-        # Display image and prediction
-        st.image(img, caption="Uploaded Image", use_column_width=True)
-        st.write(f"Predicted Breed: **{pred_label}**")
-        st.write("Prediction Probabilities:")
-        for i, breed in enumerate(unique_breeds):
-            st.write(f"{breed}: {pred_probs[0][i]:.4f}")
-    except Exception as e:
-        st.error(f"Error processing image or prediction: {e}")
+if uploaded_file is not None:
+    image_data = Image.open(uploaded_file).convert("RGB")
+    st.image(image_data, caption="Uploaded Image", use_column_width=True)
+
+    img = image_data.resize((224, 224))
+    img_array = np.array(img) / 255.0
+    img_array = np.expand_dims(img_array, axis=0)
+
+    if st.button("Predict"):
+        preds = model.predict(img_array)
+        top_idx = np.argmax(preds)
+        confidence = preds[0][top_idx]
+
+        st.success(f"🐕 Predicted Breed: {class_names[top_idx]} ({confidence*100:.2f}%)")
