@@ -1,72 +1,64 @@
 import streamlit as st
 import tensorflow as tf
 import numpy as np
-import pandas as pd
-from tensorflow.keras.preprocessing import image
 from PIL import Image
-import requests
-import re
-import os
 
-st.set_page_config(page_title="Dog Breed Classification", page_icon="🐶")
-st.title("🐕 End-to-End Dog Breed Classification")
+# Dog breeds list
+dog_breeds = [
+    "Chihuahua", "Japanese Spaniel", "Maltese Dog", "Pekinese", "Shih-Tzu", "Blenheim Spaniel", "Papillon",
+    "Toy Terrier", "Rhodesian Ridgeback", "Afghan Hound", "Basset", "Beagle", "Bloodhound", "Bluetick",
+    "Black-and-Tan Coonhound", "Walker Hound", "English Foxhound", "Redbone", "Borzoi", "Irish Wolfhound",
+    "Italian Greyhound", "Whippet", "Ibizan Hound", "Norwegian Elkhound", "Otterhound", "Saluki",
+    "Scottish Deerhound", "Weimaraner", "Staffordshire Bullterrier", "American Staffordshire Terrier",
+    "Bedlington Terrier", "Border Terrier", "Kerry Blue Terrier", "Irish Terrier", "Norfolk Terrier",
+    "Norwich Terrier", "Yorkshire Terrier", "Wire-Haired Fox Terrier", "Lakeland Terrier", "Sealyham Terrier",
+    "Airedale", "Cairn", "Australian Terrier", "Dandie Dinmont", "Boston Bull", "Miniature Schnauzer",
+    "Giant Schnauzer", "Standard Schnauzer", "Scotch Terrier", "Tibetan Terrier", "Silky Terrier",
+    "Soft-Coated Wheaten Terrier", "West Highland White Terrier", "Lhasa", "Flat-Coated Retriever",
+    "Curly-Coated Retriever", "Golden Retriever", "Labrador Retriever", "Chesapeake Bay Retriever",
+    "German Short-Haired Pointer", "Vizsla", "English Setter", "Irish Setter", "Gordon Setter",
+    "Brittany Spaniel", "Clumber", "English Springer", "Welsh Springer Spaniel", "Cocker Spaniel",
+    "Sussex Spaniel", "Irish Water Spaniel", "Kuvasz", "Schipperke", "Groenendael", "Malinois", "Briard",
+    "Kelpie", "Komondor", "Old English Sheepdog", "Shetland Sheepdog", "Collie", "Border Collie",
+    "Bouvier des Flandres", "Rottweiler", "German Shepherd", "Doberman", "Miniature Pinscher",
+    "Greater Swiss Mountain Dog", "Bernese Mountain Dog", "Appenzeller", "Entlebucher", "Boxer",
+    "Bull Mastiff", "Tibetan Mastiff", "French Bulldog", "Great Dane", "Saint Bernard", "Eskimo Dog",
+    "Malamute", "Siberian Husky", "Affenpinscher", "Basenji", "Pug", "Leonberg", "Newfoundland",
+    "Great Pyrenees", "Samoyed", "Pomeranian", "Chow", "Keeshond", "Brabancon Griffon", "Pembroke",
+    "Cardigan", "Toy Poodle", "Miniature Poodle", "Standard Poodle", "Mexican Hairless", "Dingo",
+    "Dhole", "African Hunting Dog"
+]
 
-# ==============================
-# 1. Download Model from Google Drive
-# ==============================
+# Load model
 @st.cache_resource
 def load_model():
-    model_path = "dog_vision_model.h5"
-    if not os.path.exists(model_path):
-        drive_link = "https://drive.google.com/file/d/1YourModelID/view?usp=sharing"  # CHANGE THIS
-        match = re.search(r"/d/([a-zA-Z0-9_-]+)", drive_link)
-        if match:
-            file_id = match.group(1)
-            download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
-            st.write("📥 Downloading model from Google Drive...")
-            r = requests.get(download_url)
-            with open(model_path, "wb") as f:
-                f.write(r.content)
-        else:
-            st.error("❌ Invalid Google Drive link for model.")
-            st.stop()
-    return tf.keras.models.load_model(model_path)
+    model = tf.keras.models.load_model("model_2.h5")
+    return model
 
 model = load_model()
 
-# ==============================
-# 2. Load Class Labels
-# ==============================
-@st.cache_data
-def load_labels():
-    df = pd.read_csv("labels.csv")
-    if "breed" in df.columns:
-        return sorted(df["breed"].unique().tolist())
-    else:
-        st.error("❌ 'labels.csv' must contain a 'breed' column.")
-        st.stop()
+# App UI
+st.title("🐶 Dog Breed Classifier")
+st.markdown("Upload a dog image and get the predicted breed using a pre-trained EfficientNetB0 model.")
 
-class_names = load_labels()
-
-# ==============================
-# 3. Image Upload
-# ==============================
-uploaded_file = st.file_uploader("Upload a dog image", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    img = Image.open(uploaded_file).convert("RGB")
-    st.image(img, caption="Uploaded Image", use_column_width=True)
+    # Show image
+    image = Image.open(uploaded_file).convert("RGB")
+    st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    # Preprocess image
-    img_resized = img.resize((224, 224))  # Resize to match training
-    img_array = np.array(img_resized) / 255.0
-    img_array = np.expand_dims(img_array, axis=0)
+    # Preprocess
+    img = image.resize((224, 224))
+    img_array = tf.keras.preprocessing.image.img_to_array(img)
+    img_array = tf.expand_dims(img_array, axis=0) / 255.0
 
-    if st.button("Predict"):
-        preds = model.predict(img_array)
-        top_indices = preds[0].argsort()[-3:][::-1]  # Top 3 predictions
-        st.subheader("🔮 Top Predictions:")
-        for idx in top_indices:
-            breed = class_names[idx]
-            confidence = preds[0][idx] * 100
-            st.write(f"✅ {breed}: **{confidence:.2f}%**")
+    # Predict
+    predictions = model.predict(img_array)
+    predicted_index = tf.argmax(predictions[0]).numpy()
+    predicted_breed = dog_breeds[predicted_index]
+    confidence = tf.reduce_max(predictions[0]).numpy() * 100
+
+    # Output
+    st.markdown(f"### 🐾 Predicted Breed: `{predicted_breed}`")
+    st.markdown(f"**Confidence:** {confidence:.2f}%")
