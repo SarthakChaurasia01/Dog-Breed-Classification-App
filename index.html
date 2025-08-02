@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dog Breed Classifier</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Dog Breed Classifier 🐶</h1>
+    <input type="file" id="imageInput" accept="image/*"/>
+    <img id="preview" src="" alt="Image Preview"/>
+    <button onclick="predict()">Predict</button>
+    <h2 id="predictionResult">Prediction: <span>---</span></h2>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.16.0/dist/tf.min.js"></script>
+  <script>
+    let model, labels;
+
+    async function loadModel() {
+      model = await tf.loadLayersModel("model_2.json");
+      const res = await fetch("labels.json");
+      labels = await res.json();
+    }
+
+    async function predict() {
+      const imgEl = document.getElementById("preview");
+      if (!imgEl.src) return alert("Please upload an image");
+
+      const tensor = tf.browser.fromPixels(imgEl)
+        .resizeNearestNeighbor([224, 224])
+        .toFloat()
+        .expandDims();
+
+      const prediction = model.predict(tensor);
+      const predictedIndex = prediction.argMax(-1).dataSync()[0];
+      const breed = labels[predictedIndex];
+
+      document.getElementById("predictionResult").querySelector("span").textContent = breed;
+    }
+
+    document.getElementById("imageInput").addEventListener("change", function (e) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        document.getElementById("preview").src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    loadModel();
+  </script>
+</body>
+</html>
